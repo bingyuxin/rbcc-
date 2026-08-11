@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RBCC Redbird Board</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <section class="login-screen" id="loginScreen">
+    <form class="login-card" id="loginForm">
+      <div class="eyebrow">RBCC LOGIN</div>
+      <h1>登录项目看板</h1>
+      <label for="loginUsername">账号</label>
+      <input id="loginUsername" name="username" autocomplete="username" required>
+      <label for="loginPassword">密码</label>
+      <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+      <p class="login-error" id="loginError" role="alert"></p>
+      <button class="btn primary" type="submit">登录</button>
+    </form>
+  </section>
+
+  <div class="app" id="appShell" hidden>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">RBCC · REDBIRD CHALLENGE CAMP</div>
+        <h1>人机共生项目协作看板</h1>
+        <p>任务、日程、决策和贡献都可以增删改；本地可用，接入后端后可写入 MySQL。</p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="logoutBtn" type="button">退出登录</button>
+        <button class="btn" id="syncBtn" type="button">同步状态</button>
+        <button class="btn" id="exportBtn" type="button">导出数据</button>
+        <button class="btn danger" id="resetBtn" type="button">重置</button>
+      </div>
+    </header>
+
+    <nav class="page-nav" aria-label="页面导航">
+      <a href="#overview-page">总览日程</a>
+      <a href="#research-page">企业调研</a>
+      <a href="#worklog-page">看板记录</a>
+    </nav>
+
+    <main class="page-stack">
+      <section class="page" id="overview-page">
+        <div class="page-title">
+          <span>01</span>
+          <h2>总览日程</h2>
+        </div>
+      <section class="metric-grid" id="metricGrid" aria-label="核心数字"></section>
+
+      <section class="panel schedule-panel">
+        <div class="panel-head">
+          <div>
+            <h2>未来10日日程</h2>
+            <p>点击单元格添加日程；每条日程都能编辑和删除。</p>
+          </div>
+          <button class="btn primary" id="addScheduleBtn" type="button">新增日程</button>
+        </div>
+        <div class="schedule-scroll">
+          <div class="schedule-grid" id="scheduleGrid"></div>
+        </div>
+      </section>
+
+      </section>
+
+      <section class="page" id="research-page">
+        <div class="page-title">
+          <span>02</span>
+          <h2>企业调研</h2>
+        </div>
+
+        <section class="panel research-panel" id="research">
+        <div class="panel-head">
+          <div>
+            <h2>企业调研</h2>
+            <p>记录不同公司的访谈安排、四象限洞察、用户画像和一句话公式。</p>
+          </div>
+          <button class="btn primary" id="addResearchBtn" type="button">新增调研</button>
+        </div>
+        <div class="research-list" id="researchList"></div>
+      </section>
+
+      </section>
+
+      <section class="page" id="worklog-page">
+        <div class="page-title">
+          <span>03</span>
+          <h2>看板记录</h2>
+        </div>
+
+        <section class="dashboard-grid">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>任务看板</h2>
+              <p>Lead + Collaborators</p>
+            </div>
+            <button class="btn primary" id="addTaskBtn" type="button">新增任务</button>
+          </div>
+          <div class="list" id="taskList"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>决策日志</h2>
+              <p>留痕、讨论、结论</p>
+            </div>
+            <button class="btn primary" id="addDecisionBtn" type="button">新增决策</button>
+          </div>
+          <div class="list" id="decisionList"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>贡献记录</h2>
+              <p>只记产出，不做条形排行</p>
+            </div>
+            <button class="btn primary" id="addContributionBtn" type="button">新增贡献</button>
+          </div>
+          <div class="list" id="contributionList"></div>
+        </section>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="editorDialog">
+    <form method="dialog" id="editorForm">
+      <div class="dialog-head">
+        <h3 id="dialogTitle">编辑</h3>
+        <button class="icon-btn" id="closeDialogBtn" type="button" aria-label="关闭">×</button>
+      </div>
+      <div id="formFields" class="form-fields"></div>
+      <div class="dialog-actions">
+        <button class="btn" value="cancel" type="button" id="cancelDialogBtn">取消</button>
+        <button class="btn primary" value="save" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="./app.js"></script>
+</body>
+</html>

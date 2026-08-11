@@ -1,0 +1,11 @@
+.m2/
+target/
+*.class
+.idea/
+*.iml
+*.iws
+.mvn/
+src/main/resources/application.properties
+src/main/resources/application-*.properties
+.DS_Store
+Thumbs.db
