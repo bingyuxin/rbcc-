@@ -214,11 +214,45 @@ async function loadState() {
     const response = await fetch(`${API_BASE}/snapshot`);
     if (!response.ok) return;
     const data = await response.json();
-    if (data && Object.keys(data).length) state = { ...structuredClone(defaultState), ...data };
+    const recoveredResearch = collectLegacyResearch(data);
+    if (recoveredResearch.length) {
+      await fetch(`${API_BASE}/snapshot/merge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ research: recoveredResearch })
+      });
+      const refreshedResponse = await fetch(`${API_BASE}/snapshot`);
+      if (refreshedResponse.ok) {
+        state = { ...structuredClone(defaultState), ...(await refreshedResponse.json()) };
+      }
+    } else if (data && Object.keys(data).length) {
+      state = { ...structuredClone(defaultState), ...data };
+    }
     state = { ...structuredClone(defaultState), ...state };
   } catch {
     toast("后端未启动，当前使用浏览器本地保存");
   }
+}
+
+function collectLegacyResearch(serverState) {
+  const existingIds = new Set((serverState.research || []).map((item) => item.id));
+  const recovered = [];
+  const seen = new Set();
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key !== STORAGE_KEY && !key?.startsWith(`${STORAGE_KEY}-`)) continue;
+    try {
+      const cached = JSON.parse(localStorage.getItem(key));
+      (cached.research || []).forEach((item) => {
+        if (!item?.id || !item.company || existingIds.has(item.id) || seen.has(item.id)) return;
+        seen.add(item.id);
+        recovered.push(item);
+      });
+    } catch {
+      // Ignore unrelated or malformed browser data.
+    }
+  }
+  return recovered;
 }
 
 function renderMetrics() {

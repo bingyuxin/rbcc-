@@ -52,20 +52,7 @@ public class BoardItemController {
     @PutMapping("/snapshot")
     @Transactional
     public ResponseEntity<Void> replaceSnapshot(@RequestBody Map<String, List<JsonNode>> snapshot, HttpSession session) {
-        Account account = sharedBoardAccount();
-        repository.deleteByAccountId(account.getId());
-        snapshot.forEach((type, items) -> {
-            int order = 0;
-            for (JsonNode payload : items) {
-                BoardItem item = new BoardItem();
-                item.setAccount(account);
-                item.setItemType(type);
-                item.setPayload(payload.toString());
-                item.setSortOrder(order++);
-                repository.save(item);
-            }
-        });
-        return ResponseEntity.noContent().build();
+        return mergeSnapshot(snapshot, session);
     }
 
     @PostMapping("/snapshot/merge")
