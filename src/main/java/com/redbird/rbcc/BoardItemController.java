@@ -20,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/items")
@@ -37,7 +38,7 @@ public class BoardItemController {
     @GetMapping("/snapshot")
     public Map<String, List<JsonNode>> snapshot(HttpSession session) {
         Map<String, List<JsonNode>> result = new LinkedHashMap<>();
-        repository.findByAccountIdOrderByItemTypeAscSortOrderAscIdAsc(accountId(session)).forEach(item -> {
+        repository.findByAccountIdOrderByItemTypeAscSortOrderAscIdAsc(sharedBoardAccount().getId()).forEach(item -> {
             try {
                 result.computeIfAbsent(item.getItemType(), ignored -> new java.util.ArrayList<>())
                         .add(objectMapper.readTree(item.getPayload()));
@@ -51,7 +52,7 @@ public class BoardItemController {
     @PutMapping("/snapshot")
     @Transactional
     public ResponseEntity<Void> replaceSnapshot(@RequestBody Map<String, List<JsonNode>> snapshot, HttpSession session) {
-        Account account = account(session);
+        Account account = sharedBoardAccount();
         repository.deleteByAccountId(account.getId());
         snapshot.forEach((type, items) -> {
             int order = 0;
@@ -67,25 +68,75 @@ public class BoardItemController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/snapshot/merge")
+    @Transactional
+    public ResponseEntity<Void> mergeSnapshot(@RequestBody Map<String, List<JsonNode>> snapshot, HttpSession session) {
+        Account account = sharedBoardAccount();
+        Map<String, BoardItem> existingItems = new LinkedHashMap<>();
+        repository.findByAccountIdOrderByItemTypeAscSortOrderAscIdAsc(account.getId()).forEach(item -> {
+            clientItemId(item).ifPresent(clientId -> existingItems.put(item.getItemType() + ":" + clientId, item));
+        });
+
+        snapshot.forEach((type, items) -> {
+            int nextOrder = repository.findByAccountIdAndItemTypeOrderBySortOrderAscIdAsc(account.getId(), type).size();
+            for (JsonNode payload : items) {
+                String clientId = payload.path("id").asText();
+                if (clientId.isBlank()) {
+                    continue;
+                }
+                BoardItem item = existingItems.get(type + ":" + clientId);
+                if (item == null) {
+                    item = new BoardItem();
+                    item.setAccount(account);
+                    item.setItemType(type);
+                    item.setSortOrder(nextOrder++);
+                }
+                item.setPayload(payload.toString());
+                repository.save(item);
+            }
+        });
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/snapshot/{type}/{clientId}")
+    @Transactional
+    public ResponseEntity<Void> deleteByClientId(
+            @PathVariable String type,
+            @PathVariable String clientId,
+            HttpSession session
+    ) {
+        BoardItem item = repository.findByAccountIdAndItemTypeOrderBySortOrderAscIdAsc(sharedBoardAccount().getId(), type)
+                .stream()
+                .filter(candidate -> clientItemId(candidate).filter(clientId::equals).isPresent())
+                .findFirst()
+                .orElseThrow(this::notFound);
+        repository.delete(item);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{type}")
     public List<JsonNode> list(@PathVariable String type, HttpSession session) {
-        return repository.findByAccountIdAndItemTypeOrderBySortOrderAscIdAsc(accountId(session), type).stream().map(this::payloadAsJson).toList();
+        return repository.findByAccountIdAndItemTypeOrderBySortOrderAscIdAsc(sharedBoardAccount().getId(), type)
+                .stream()
+                .map(this::payloadAsJson)
+                .toList();
     }
 
     @PostMapping("/{type}")
     public JsonNode create(@PathVariable String type, @RequestBody JsonNode payload, HttpSession session) {
         BoardItem item = new BoardItem();
-        item.setAccount(account(session));
+        Account account = sharedBoardAccount();
+        item.setAccount(account);
         item.setItemType(type);
         item.setPayload(payload.toString());
-        item.setSortOrder(repository.findByAccountIdAndItemTypeOrderBySortOrderAscIdAsc(accountId(session), type).size());
+        item.setSortOrder(repository.findByAccountIdAndItemTypeOrderBySortOrderAscIdAsc(account.getId(), type).size());
         return saveAndRead(item);
     }
 
     @PutMapping("/{id}")
     public JsonNode update(@PathVariable Long id, @RequestBody JsonNode payload, HttpSession session) {
         BoardItem item = repository.findById(id).orElseThrow(() -> notFound());
-        ensureOwner(item, session);
+        ensureSharedBoardItem(item);
         item.setPayload(payload.toString());
         return saveAndRead(item);
     }
@@ -93,7 +144,7 @@ public class BoardItemController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id, HttpSession session) {
         BoardItem item = repository.findById(id).orElseThrow(() -> notFound());
-        ensureOwner(item, session);
+        ensureSharedBoardItem(item);
         repository.delete(item);
         return ResponseEntity.noContent().build();
     }
@@ -110,8 +161,18 @@ public class BoardItemController {
         }
     }
 
-    private Account account(HttpSession session) {
-        return accountRepository.getReferenceById(accountId(session));
+    private Optional<String> clientItemId(BoardItem item) {
+        try {
+            String id = objectMapper.readTree(item.getPayload()).path("id").asText();
+            return id.isBlank() ? Optional.empty() : Optional.of(id);
+        } catch (JsonProcessingException error) {
+            return Optional.empty();
+        }
+    }
+
+    private Account sharedBoardAccount() {
+        return accountRepository.findFirstByOrderByIdAsc()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Please register an account first"));
     }
 
     private Long accountId(HttpSession session) {
@@ -120,8 +181,8 @@ public class BoardItemController {
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "请先登录");
     }
 
-    private void ensureOwner(BoardItem item, HttpSession session) {
-        if (!item.getAccount().getId().equals(accountId(session))) {
+    private void ensureSharedBoardItem(BoardItem item) {
+        if (!item.getAccount().getId().equals(sharedBoardAccount().getId())) {
             throw notFound();
         }
     }

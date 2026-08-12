@@ -113,7 +113,7 @@ function setAuthenticated(authenticated) {
 }
 
 function storageKey() {
-  return useApi ? `${STORAGE_KEY}-${$("#loginUsername").value.trim().toLowerCase() || "guest"}` : STORAGE_KEY;
+  return useApi ? `${STORAGE_KEY}-team` : STORAGE_KEY;
 }
 
 function setAuthMode(mode) {
@@ -193,8 +193,8 @@ async function save() {
   saveLocal();
   if (!useApi) return;
   try {
-    await fetch(`${API_BASE}/snapshot`, {
-      method: "PUT",
+    await fetch(`${API_BASE}/snapshot/merge`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(state)
     });
@@ -204,7 +204,7 @@ async function save() {
 }
 
 async function loadState() {
-  const local = localStorage.getItem(storageKey());
+  const local = useApi ? null : localStorage.getItem(storageKey());
   if (local) {
     state = JSON.parse(local);
   }
@@ -214,7 +214,7 @@ async function loadState() {
     const response = await fetch(`${API_BASE}/snapshot`);
     if (!response.ok) return;
     const data = await response.json();
-    if (data && Object.keys(data).length) state = { ...state, ...data };
+    if (data && Object.keys(data).length) state = { ...structuredClone(defaultState), ...data };
     state = { ...structuredClone(defaultState), ...state };
   } catch {
     toast("后端未启动，当前使用浏览器本地保存");
@@ -583,6 +583,16 @@ async function submitEditor(event) {
 async function deleteItem(type, id) {
   state[type] = state[type].filter((item) => item.id !== id);
   render();
+  if (useApi) {
+    try {
+      await fetch(`${API_BASE}/snapshot/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, {
+        method: "DELETE"
+      });
+    } catch {
+      toast("删除未同步，请刷新后重试");
+      return;
+    }
+  }
   await save();
   toast("已删除");
 }
