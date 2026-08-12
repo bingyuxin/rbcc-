@@ -10,13 +10,14 @@
   <section class="login-screen" id="loginScreen">
     <form class="login-card" id="loginForm">
       <div class="eyebrow">RBCC LOGIN</div>
-      <h1>登录项目看板</h1>
+      <h1 id="authTitle">登录项目看板</h1>
       <label for="loginUsername">账号</label>
-      <input id="loginUsername" name="username" autocomplete="username" required>
+      <input id="loginUsername" name="username" autocomplete="username" minlength="3" maxlength="40" required>
       <label for="loginPassword">密码</label>
-      <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+      <input id="loginPassword" name="password" type="password" autocomplete="current-password" minlength="6" maxlength="72" required>
       <p class="login-error" id="loginError" role="alert"></p>
-      <button class="btn primary" type="submit">登录</button>
+      <button class="btn primary" id="authSubmitBtn" type="submit">登录</button>
+      <button class="auth-switch" id="authSwitchBtn" type="button">注册账号</button>
     </form>
   </section>
 
@@ -25,7 +26,6 @@
       <div>
         <div class="eyebrow">RBCC · REDBIRD CHALLENGE CAMP</div>
         <h1>人机共生项目协作看板</h1>
-        <p>任务、日程、决策和贡献都可以增删改；本地可用，接入后端后可写入 MySQL。</p>
       </div>
       <div class="actions">
         <button class="btn" id="logoutBtn" type="button">退出登录</button>
@@ -78,7 +78,35 @@
           </div>
           <button class="btn primary" id="addResearchBtn" type="button">新增调研</button>
         </div>
+        <div class="research-tools">
+          <div class="research-search">
+            <input id="researchKeyword" type="search" placeholder="输入公司、负责人、访谈人或其他内容">
+            <select id="researchTopicFilter" aria-label="按调研主题筛选"></select>
+            <select id="researchGroupFilter" aria-label="按组别筛选">
+              <option value="">全部组别</option>
+              <option value="迭代组">迭代组</option>
+              <option value="开拓组">开拓组</option>
+            </select>
+            <select id="researchMatchMode" aria-label="匹配方式">
+              <option value="fuzzy">模糊搜索</option>
+              <option value="exact">准确搜索</option>
+            </select>
+            <button class="btn" id="clearResearchSearchBtn" type="button">清空</button>
+          </div>
+          <p class="research-result-count" id="researchResultCount"></p>
+        </div>
         <div class="research-list" id="researchList"></div>
+        <section class="research-import" aria-label="快速识别调研信息">
+          <div>
+            <h3>快速录入调研信息</h3>
+            <p>粘贴已复制的访谈记录、通知或表格内容，识别结果会预填到新增调研中。</p>
+          </div>
+          <textarea id="researchImportText" placeholder="例如：公司：某医疗科技有限公司&#10;调研主题：医疗健康与家居照护场景&#10;组别：迭代组&#10;负责人：张三&#10;访谈人：李四（产品经理）&#10;访谈时间：8月15日 14:00&#10;地点：园区A座 301"></textarea>
+          <div class="research-import-actions">
+            <span id="researchImportHint"></span>
+            <button class="btn primary" id="parseResearchBtn" type="button">识别并新增</button>
+          </div>
+        </section>
       </section>
 
       </section>

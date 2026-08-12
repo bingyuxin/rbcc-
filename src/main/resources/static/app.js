@@ -2,6 +2,13 @@ const STORAGE_KEY = "rbcc-board-state-v1";
 const API_BASE = "/api/items";
 const AUTH_BASE = "/api/auth";
 const useApi = location.protocol !== "file:";
+const researchTopics = [
+  "医疗健康与家居照护场景",
+  "智慧交通与基础设施场景",
+  "公共服务与城市空间场景",
+  "创意与内容产业场景",
+  "装备制造加工和装配场景"
+];
 
 const days = [
   { key: "8.10", week: "周一" },
@@ -63,7 +70,7 @@ const defaultState = {
     {
       id: crypto.randomUUID(),
       company: "示例公司 A",
-      topic: "AI 工具在企业协作中的使用情况",
+      topic: "医疗健康与家居照护场景",
       group: "迭代组",
       owner: "Mary",
       interviewee: "产品经理 / 运营负责人",
@@ -89,6 +96,7 @@ const defaultState = {
 
 let state = structuredClone(defaultState);
 let editing = { type: "", id: null };
+let authMode = "login";
 
 const $ = (selector) => document.querySelector(selector);
 const toast = (message) => {
@@ -102,6 +110,20 @@ const toast = (message) => {
 function setAuthenticated(authenticated) {
   $("#loginScreen").hidden = authenticated;
   $("#appShell").hidden = !authenticated;
+}
+
+function storageKey() {
+  return useApi ? `${STORAGE_KEY}-${$("#loginUsername").value.trim().toLowerCase() || "guest"}` : STORAGE_KEY;
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const registering = mode === "register";
+  $("#authTitle").textContent = registering ? "注册项目账号" : "登录项目看板";
+  $("#authSubmitBtn").textContent = registering ? "注册并登录" : "登录";
+  $("#authSwitchBtn").textContent = registering ? "已有账号，去登录" : "注册账号";
+  $("#loginPassword").autocomplete = registering ? "new-password" : "current-password";
+  $("#loginError").textContent = "";
 }
 
 async function startBoard() {
@@ -136,13 +158,14 @@ async function login(event) {
   $("#loginError").textContent = "";
   const data = Object.fromEntries(new FormData(event.target).entries());
   try {
-    const response = await fetch(`${AUTH_BASE}/login`, {
+    const response = await fetch(`${AUTH_BASE}/${authMode === "register" ? "register" : "login"}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
     });
     if (!response.ok) {
-      $("#loginError").textContent = "账号或密码错误";
+      const result = await response.json().catch(() => ({}));
+      $("#loginError").textContent = result.message || (authMode === "register" ? "注册失败" : "账号或密码错误");
       return;
     }
     setAuthenticated(true);
@@ -163,7 +186,7 @@ async function logout() {
 }
 
 function saveLocal() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(storageKey(), JSON.stringify(state));
 }
 
 async function save() {
@@ -181,7 +204,7 @@ async function save() {
 }
 
 async function loadState() {
-  const local = localStorage.getItem(STORAGE_KEY);
+  const local = localStorage.getItem(storageKey());
   if (local) {
     state = JSON.parse(local);
   }
@@ -289,7 +312,9 @@ function renderContributions() {
 }
 
 function renderResearch() {
-  $("#researchList").innerHTML = state.research.map((item) => `
+  const filteredResearch = filterResearch(state.research);
+  $("#researchResultCount").textContent = `找到 ${filteredResearch.length} 条调研记录`;
+  $("#researchList").innerHTML = filteredResearch.map((item) => `
     <article class="research-card">
       <div class="research-card-head">
         <div>
@@ -337,7 +362,102 @@ function renderResearch() {
         </div>
       </div>
     </article>
-  `).join("");
+  `).join("") || `<div class="research-empty">没有找到符合条件的调研记录</div>`;
+}
+
+function filterResearch(items) {
+  const keyword = $("#researchKeyword").value.trim();
+  const topic = $("#researchTopicFilter").value;
+  const group = $("#researchGroupFilter").value;
+  const mode = $("#researchMatchMode").value;
+  const normalizedKeyword = keyword.toLocaleLowerCase();
+  return items.filter((item) => {
+    if (topic && item.topic !== topic) return false;
+    if (group && item.group !== group) return false;
+    if (!normalizedKeyword) return true;
+    const searchable = Object.values(item).join(" ").toLocaleLowerCase();
+    return mode === "exact" ? searchable.split(/[\s,，。；;、:：/|]+/).includes(normalizedKeyword) : searchable.includes(normalizedKeyword);
+  });
+}
+
+function initResearchTools() {
+  $("#researchTopicFilter").innerHTML = `<option value="">全部主题</option>${researchTopics.map((topic) => `<option value="${topic}">${topic}</option>`).join("")}`;
+  ["researchKeyword", "researchTopicFilter", "researchGroupFilter", "researchMatchMode"].forEach((id) => {
+    $(`#${id}`).addEventListener(id === "researchKeyword" ? "input" : "change", renderResearch);
+  });
+}
+
+function parseResearchInput(text) {
+  const result = {
+    topic: researchTopics.find((topic) => text.includes(topic)) || "",
+    group: text.includes("开拓组") ? "开拓组" : text.includes("迭代组") ? "迭代组" : "迭代组"
+  };
+  const aliases = {
+    company: ["调研公司", "公司", "企业", "项目"],
+    topic: ["调研主题", "主题", "场景"],
+    group: ["标签", "组别", "小组"],
+    owner: ["负责人", "对接人"],
+    interviewee: ["访谈人", "受访者", "访谈对象"],
+    interviewTime: ["访谈时间", "时间", "日期"],
+    place: ["访谈地点", "地点", "地址"],
+    user: ["中心用户", "用户"],
+    says: ["SAYS", "用户说", "原话"],
+    thinks: ["THINKS", "用户想"],
+    does: ["DOES", "用户做"],
+    feels: ["FEELS", "用户感受"],
+    personaName: ["姓名", "Name"],
+    personaAge: ["年龄", "Age"],
+    personaBehaviors: ["习惯", "行为", "Behaviors"],
+    personaNeeds: ["需求", "痛点", "Needs"],
+    personaGoal: ["目标", "Goal"],
+    personaQuote: ["引用", "金句", "Quote"],
+    formulaUser: ["公式用户", "Formula User"],
+    formulaNeed: ["公式需求", "Formula Need"],
+    formulaInsight: ["洞察", "Insight"]
+  };
+  const lines = text.replace(/\r/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
+  lines.forEach((line) => {
+    const match = line.match(/^([^:：]{1,20})[:：]\s*(.+)$/);
+    if (!match) return;
+    const [, key, value] = match;
+    Object.entries(aliases).some(([field, names]) => {
+      if (!names.some((name) => key.toLocaleLowerCase().includes(name.toLocaleLowerCase()))) return false;
+      if (!(field === "topic" && result.topic && !researchTopics.includes(value.trim()))) result[field] = value.trim();
+      return true;
+    });
+  });
+  if (!result.company) {
+    const companyLine = lines.find((line) => /公司|企业|集团|医院|中心/.test(line));
+    if (companyLine) result.company = companyLine.replace(/^(公司|企业|项目)[:：]?\s*/, "");
+  }
+  const allLabels = Object.values(aliases).flat().sort((a, b) => b.length - a.length);
+  const escapedLabels = allLabels.map(escapeRegExp).join("|");
+  Object.entries(aliases).forEach(([field, names]) => {
+    if (result[field] && field !== "company") return;
+    const labelPattern = names.map(escapeRegExp).join("|");
+    const expression = new RegExp(
+      `(?:${labelPattern})(?:是|为|在|：|:|？|\\?)?\\s*([\\s\\S]*?)(?=(?:${escapedLabels})(?:是|为|在|：|:|？|\\?)|[，,。；;\\n]|$)`,
+      "i"
+    );
+    const match = text.match(expression);
+    if (match?.[1]) result[field] = cleanExtractedValue(match[1]);
+  });
+  if (result.topic && !researchTopics.includes(result.topic)) {
+    result.topic = researchTopics.find((topic) => text.includes(topic)) || "";
+  }
+  const saysMatch = text.match(/(?:用户说了什么|用户说|原话|SAYS)(?:是|为|：|:|？|\?)?\s*([\s\S]*?)(?=(?:THINKS|用户在想什么|用户想|DOES|用户做了什么|用户做|FEELS|用户感受)|$)/i);
+  if (saysMatch?.[1]) result.says = cleanExtractedValue(saysMatch[1]);
+  return result;
+}
+
+function cleanExtractedValue(value) {
+  return value
+    .replace(/^[：:，,。；;\s]+|[：:，,。；;\s]+$/g, "")
+    .trim();
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function empathyCell(label, value) {
@@ -402,7 +522,7 @@ function fieldsFor(type, item = {}) {
   if (type === "research") {
     return [
       common("company", "调研公司 / 项目"),
-      common("topic", "调研主题"),
+      common("topic", "调研主题", "select", researchTopics),
       common("group", "标签", "select", ["迭代组", "开拓组"]),
       common("owner", "负责人"),
       common("interviewee", "访谈人 / 职位"),
@@ -529,6 +649,7 @@ $("#addTaskBtn").addEventListener("click", () => openEditor("tasks"));
 $("#addDecisionBtn").addEventListener("click", () => openEditor("decisions"));
 $("#addContributionBtn").addEventListener("click", () => openEditor("contributions"));
 $("#loginForm").addEventListener("submit", login);
+$("#authSwitchBtn").addEventListener("click", () => setAuthMode(authMode === "login" ? "register" : "login"));
 $("#logoutBtn").addEventListener("click", logout);
 $("#editorForm").addEventListener("submit", submitEditor);
 $("#closeDialogBtn").addEventListener("click", () => $("#editorDialog").close());
@@ -552,5 +673,24 @@ $("#syncBtn").addEventListener("click", async () => {
   await save();
   toast(useApi ? "已尝试同步到后端" : "当前为本地文件模式，数据保存在浏览器");
 });
+$("#clearResearchSearchBtn").addEventListener("click", () => {
+  $("#researchKeyword").value = "";
+  $("#researchTopicFilter").value = "";
+  $("#researchGroupFilter").value = "";
+  $("#researchMatchMode").value = "fuzzy";
+  renderResearch();
+});
+$("#parseResearchBtn").addEventListener("click", () => {
+  const text = $("#researchImportText").value.trim();
+  if (!text) {
+    $("#researchImportHint").textContent = "请先粘贴调研内容";
+    return;
+  }
+  const seed = parseResearchInput(text);
+  const count = Object.values(seed).filter(Boolean).length;
+  $("#researchImportHint").textContent = `已识别 ${count} 项信息，请确认后保存`;
+  openEditor("research", null, seed);
+});
 
+initResearchTools();
 checkAuth();
