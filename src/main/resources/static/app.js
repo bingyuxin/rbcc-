@@ -7,8 +7,9 @@ const researchTopics = [
   "智慧交通与基础设施场景",
   "公共服务与城市空间场景",
   "创意与内容产业场景",
-  "装备制造加工和装配场景"
+  "装备制造加工与装配场景"
 ];
+const researchSeedKey = "rbcc-research-seeded-v2";
 
 const days = [
   { key: "8.10", week: "周一" },
@@ -66,32 +67,7 @@ const defaultState = {
     { id: crypto.randomUUID(), member: "Alice", description: "整理竞品资料", result: "输出对比表 1 份", task: "竞品分析" },
     { id: crypto.randomUUID(), member: "Bob", description: "完成原型页面", result: "产出 Demo 草图", task: "Demo 框架" }
   ],
-  research: [
-    {
-      id: crypto.randomUUID(),
-      company: "示例公司 A",
-      topic: "医疗健康与家居照护场景",
-      group: "迭代组",
-      owner: "Mary",
-      interviewee: "产品经理 / 运营负责人",
-      interviewTime: "8月12日 15:00",
-      place: "产业园 3F 会议室",
-      user: "企业协作工具使用者",
-      says: "现有工具很多，但信息经常分散在不同群和文档里。",
-      thinks: "希望团队信息能自动汇总，不想每天手动整理。",
-      does: "每天查看群聊、表格和会议纪要，再把重点转成任务。",
-      feels: "焦虑、重复劳动多，担心遗漏关键决策。",
-      personaName: "Beatrice",
-      personaAge: "21",
-      personaBehaviors: "经常参与小组协作，习惯用表格和聊天工具记录信息。",
-      personaNeeds: "需要更清晰的任务分配、调研留痕和决策记录。",
-      personaGoal: "减少重复整理，把更多时间放在分析和展示上。",
-      personaQuote: "我不怕做事，怕的是大家做过什么最后没人记得清。",
-      formulaUser: "项目成员",
-      formulaNeed: "快速沉淀调研证据",
-      formulaInsight: "临时项目最缺的是轻量、清晰、可回看的记录系统"
-    }
-  ]
+  research: []
 };
 
 let state = structuredClone(defaultState);
@@ -189,6 +165,26 @@ function saveLocal() {
   localStorage.setItem(storageKey(), JSON.stringify(state));
 }
 
+async function seedSpreadsheetResearch() {
+  if (localStorage.getItem(researchSeedKey) === "true") return false;
+  const previousResearch = [...(state.research || [])];
+  const records = (window.spreadsheetResearch || []).map((item) => ({
+    id: crypto.randomUUID(),
+    ...item
+  }));
+  if (!records.length) return false;
+  if (useApi) {
+    await Promise.all(previousResearch
+      .filter((item) => item?.id)
+      .map((item) => fetch(`${API_BASE}/snapshot/research/${encodeURIComponent(item.id)}`, {
+        method: "DELETE"
+      }).catch(() => {})));
+  }
+  state.research = records;
+  localStorage.setItem(researchSeedKey, "true");
+  return true;
+}
+
 async function save() {
   saveLocal();
   if (!useApi) return;
@@ -209,7 +205,10 @@ async function loadState() {
     state = JSON.parse(local);
   }
   state = { ...structuredClone(defaultState), ...state };
-  if (!useApi) return;
+  if (!useApi) {
+    await seedSpreadsheetResearch();
+    return;
+  }
   try {
     const response = await fetch(`${API_BASE}/snapshot`);
     if (!response.ok) return;
@@ -229,6 +228,9 @@ async function loadState() {
       state = { ...structuredClone(defaultState), ...data };
     }
     state = { ...structuredClone(defaultState), ...state };
+    if (await seedSpreadsheetResearch()) {
+      await save();
+    }
   } catch {
     toast("后端未启动，当前使用浏览器本地保存");
   }
@@ -345,55 +347,67 @@ function renderContributions() {
   `).join("");
 }
 
+function researchTagClass(value, type) {
+  if (type === "group") {
+    return value === "开拓组" ? "tag-pink" : value === "迭代组" ? "tag-green" : "tag-muted";
+  }
+  const topicIndex = researchTopics.indexOf(value);
+  return ["tag-blue", "tag-gold", "tag-green", "tag-pink", "tag-purple"][topicIndex] || "tag-muted";
+}
+
+function researchGroupLabel(value) {
+  return value === "迭代组" ? "迭代" : value === "开拓组" ? "开拓" : value;
+}
+
+function researchDetailField(label, value, className = "") {
+  return `
+    <div class="research-detail-field ${className}">
+      <dt>${label}</dt>
+      <dd>${escapeHtml(value || "暂无记录")}</dd>
+    </div>
+  `;
+}
+
 function renderResearch() {
   const filteredResearch = filterResearch(state.research);
   $("#researchResultCount").textContent = `找到 ${filteredResearch.length} 条调研记录`;
   $("#researchList").innerHTML = filteredResearch.map((item) => `
-    <article class="research-card">
+    <article class="research-card" data-research-card="${item.id}">
       <div class="research-card-head">
-        <div>
-          <div class="research-title">${escapeHtml(item.company)}</div>
-          <div class="research-meta">主题：${escapeHtml(item.topic)}</div>
-          <div class="research-meta">负责人：${escapeHtml(item.owner)} · 访谈人：${escapeHtml(item.interviewee)}</div>
-          <div class="research-meta">时间：${escapeHtml(item.interviewTime)} · 地点：${escapeHtml(item.place)}</div>
+        <div class="research-card-main">
+          <div class="research-index">NO.${escapeHtml(item.surveyNo)}</div>
+          <h3 class="research-title">${escapeHtml(item.company)}</h3>
           <div class="research-tags">
-            <span class="tag ${item.group === "开拓组" ? "tag-pink" : "tag-green"}">${escapeHtml(item.group)}</span>
-            <span class="tag tag-blue">${escapeHtml(item.owner)}</span>
+            <span class="tag ${researchTagClass(item.group, "group")}">${escapeHtml(researchGroupLabel(item.group))}</span>
+            <span class="tag ${researchTagClass(item.topic, "topic")}">${escapeHtml(item.topic)}</span>
           </div>
         </div>
-        <div class="record-actions">
-          <button class="icon-btn" type="button" data-action="edit" data-type="research" data-id="${item.id}">✎</button>
-          <button class="icon-btn" type="button" data-action="delete" data-type="research" data-id="${item.id}">×</button>
+        <div class="research-card-actions">
+          <button class="btn research-toggle" type="button" data-action="toggle-research" data-id="${item.id}" aria-expanded="false">
+            <span class="research-toggle-icon">⌄</span>
+            <span class="research-toggle-label">查看详情</span>
+          </button>
+          <div class="record-actions research-record-actions">
+            <button class="icon-btn" type="button" data-action="edit" data-type="research" data-id="${item.id}" aria-label="编辑调研记录">✎</button>
+            <button class="icon-btn" type="button" data-action="delete" data-type="research" data-id="${item.id}" aria-label="删除调研记录">×</button>
+          </div>
         </div>
       </div>
-      <div class="research-body">
-        <div class="empathy-map" aria-label="四象限图">
-          ${empathyCell("SAYS", item.says)}
-          ${empathyCell("THINKS", item.thinks)}
-          ${empathyCell("DOES", item.does)}
-          ${empathyCell("FEELS", item.feels)}
-          <div class="empathy-user">${escapeHtml(item.user)}</div>
-        </div>
-        <div>
-          <div class="persona-box">
-            <div class="persona-title">用户画像</div>
-            <div class="persona-grid">
-              <strong>Name</strong><span>${escapeHtml(item.personaName)}</span>
-              <strong>Age</strong><span>${escapeHtml(item.personaAge)}</span>
-              <strong>Habit/Behaviors</strong><span>${escapeHtml(item.personaBehaviors)}</span>
-              <strong>Needs/Challenges</strong><span>${escapeHtml(item.personaNeeds)}</span>
-              <strong>Goal</strong><span>${escapeHtml(item.personaGoal)}</span>
-              <strong>Quote</strong><span>${escapeHtml(item.personaQuote)}</span>
-            </div>
-          </div>
-          <div class="insight-formula" aria-label="一句话公式">
-            <div class="formula-box">${escapeHtml(item.formulaUser)}</div>
-            <div class="formula-word">needs to</div>
-            <div class="formula-box">${escapeHtml(item.formulaNeed)}</div>
-            <div class="formula-word">because</div>
-            <div class="formula-box">${escapeHtml(item.formulaInsight)}</div>
-          </div>
-        </div>
+      <div class="research-detail" hidden>
+        <dl class="research-detail-grid">
+          ${researchDetailField("调研日期", item.date)}
+          ${researchDetailField("调研路线", item.route)}
+          ${researchDetailField("调研人 / 团队", item.team)}
+          ${researchDetailField("被调研人", item.interviewee)}
+          ${researchDetailField("被调研人身份", item.identity)}
+          ${researchDetailField("目标用户", item.who)}
+          ${researchDetailField("一句话痛点公式 · 谁", item.who, "wide")}
+          ${researchDetailField("一句话痛点公式 · 需要", item.need)}
+          ${researchDetailField("一句话痛点公式 · 什么", item.what, "wide")}
+          ${researchDetailField("一句话痛点公式 · 因为", item.because)}
+          ${researchDetailField("调研到的现象", item.phenomenon, "wide")}
+          ${researchDetailField("备注", item.note, "wide")}
+        </dl>
       </div>
     </article>
   `).join("") || `<div class="research-empty">没有找到符合条件的调研记录</div>`;
@@ -555,27 +569,20 @@ function fieldsFor(type, item = {}) {
   }
   if (type === "research") {
     return [
-      common("company", "调研公司 / 项目"),
-      common("topic", "调研主题", "select", researchTopics),
-      common("group", "标签", "select", ["迭代组", "开拓组"]),
-      common("owner", "负责人"),
-      common("interviewee", "访谈人 / 职位"),
-      common("interviewTime", "访谈时间"),
-      common("place", "访谈地点"),
-      common("user", "四象限中心用户"),
-      common("says", "SAYS：用户说了什么", "textarea"),
-      common("thinks", "THINKS：用户在想什么", "textarea"),
-      common("does", "DOES：用户做了什么", "textarea"),
-      common("feels", "FEELS：用户感受如何", "textarea"),
-      common("personaName", "画像 Name"),
-      common("personaAge", "画像 Age"),
-      common("personaBehaviors", "画像 Habit/Behaviors", "textarea"),
-      common("personaNeeds", "画像 Needs/Challenges", "textarea"),
-      common("personaGoal", "画像 Goal", "textarea"),
-      common("personaQuote", "画像 Quote", "textarea"),
-      common("formulaUser", "一句话公式：User"),
-      common("formulaNeed", "一句话公式：User's need"),
-      common("formulaInsight", "一句话公式：Insight", "textarea")
+      common("company", "调研地点 / 公司名称"),
+      common("date", "调研日期"),
+      common("route", "调研路线"),
+      common("team", "调研人 / 团队"),
+      common("interviewee", "被调研人姓名"),
+      common("identity", "被调研人身份"),
+      common("who", "一句话痛点公式：谁"),
+      common("need", "一句话痛点公式：需要"),
+      common("what", "一句话痛点公式：什么", "textarea"),
+      common("because", "一句话痛点公式：因为"),
+      common("phenomenon", "调研到的现象", "textarea"),
+      common("note", "备注", "textarea"),
+      common("topic", "所属主题", "select", researchTopics),
+      common("group", "所属类别", "select", ["迭代组", "开拓组", "待归类"])
     ];
   }
   return [
@@ -684,11 +691,24 @@ document.addEventListener("click", async (event) => {
   if (action === "add") openEditor(type);
   if (action === "edit") openEditor(type, id);
   if (action === "delete") await deleteItem(type, id);
+  if (action === "toggle-research") {
+    const card = document.querySelector(`[data-research-card="${id}"]`);
+    const detail = card?.querySelector(".research-detail");
+    const toggle = card?.querySelector(".research-toggle");
+    if (detail && toggle) {
+      const nextExpanded = detail.hidden;
+      detail.hidden = !nextExpanded;
+      toggle.setAttribute("aria-expanded", String(nextExpanded));
+      toggle.querySelector(".research-toggle-label").textContent = nextExpanded ? "收起详情" : "查看详情";
+      toggle.querySelector(".research-toggle-icon").textContent = nextExpanded ? "⌃" : "⌄";
+      card.classList.toggle("is-expanded", nextExpanded);
+    }
+  }
   if (action === "add-schedule-at") openEditor("schedule", null, { time: target.dataset.time, day: target.dataset.day || days[0].key, type: "blue" });
 });
 
 $("#addScheduleBtn").addEventListener("click", () => openEditor("schedule", null, { day: days[0].key, time: times[0], type: "blue" }));
-$("#addResearchBtn").addEventListener("click", () => openEditor("research", null, { group: "迭代组" }));
+$("#addResearchBtn").addEventListener("click", () => openEditor("research", null, { group: "待归类", topic: researchTopics[0] }));
 $("#addTaskBtn").addEventListener("click", () => openEditor("tasks"));
 $("#addDecisionBtn").addEventListener("click", () => openEditor("decisions"));
 $("#addContributionBtn").addEventListener("click", () => openEditor("contributions"));
@@ -723,17 +743,6 @@ $("#clearResearchSearchBtn").addEventListener("click", () => {
   $("#researchGroupFilter").value = "";
   $("#researchMatchMode").value = "fuzzy";
   renderResearch();
-});
-$("#parseResearchBtn").addEventListener("click", () => {
-  const text = $("#researchImportText").value.trim();
-  if (!text) {
-    $("#researchImportHint").textContent = "请先粘贴调研内容";
-    return;
-  }
-  const seed = parseResearchInput(text);
-  const count = Object.values(seed).filter(Boolean).length;
-  $("#researchImportHint").textContent = `已识别 ${count} 项信息，请确认后保存`;
-  openEditor("research", null, seed);
 });
 
 initResearchTools();
